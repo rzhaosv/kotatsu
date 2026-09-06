@@ -5,7 +5,8 @@ import { colors, radius, type } from '../theme';
 import { PrimaryButton, GhostButton, Chip, ProgressDots, CrewTile, Tag } from '../components/UI';
 import { useApp } from '../store/AppContext';
 import { CREW, tagline } from '../content/crew';
-import { CrewId, Pronouns, Since, SINCE_LABELS, FREE_TABLE, ALL_CREW } from '../logic/types';
+import { CrewId, Pronouns, Since, SINCE_LABELS, FREE_TABLE, ALL_CREW, WAITING_FOR_CHIPS } from '../logic/types';
+import { demo } from '../dev/demo';
 
 const STEPS = 3;
 const PRONOUNS: [Pronouns, string][] = [
@@ -17,10 +18,13 @@ const PRONOUNS: [Pronouns, string][] = [
 
 export default function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const { completeOnboarding, isPro } = useApp();
-  const [step, setStep] = useState(0);
-  const [name, setName] = useState('');
+  const [step, setStep] = useState(demo?.onboardStep ?? 0);
+  const [name, setName] = useState(demo?.onboardStep ? 'Mika' : '');
   const [pronouns, setPronouns] = useState<Pronouns | null>(null);
   const [since, setSince] = useState<Since | null>(null);
+  // Waiting mode is only ever entered by tapping the line below the chips. Nothing infers it.
+  const [waiting, setWaiting] = useState(false);
+  const [waitingFor, setWaitingFor] = useState('');
   const [table, setTable] = useState<CrewId[]>(isPro ? ALL_CREW : []);
   const [nudge, setNudge] = useState(false);
 
@@ -31,10 +35,10 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }) {
     setTable([...table, id]);
   };
 
-  const canContinue = step === 0 ? name.trim().length > 0 : step === 1 ? since !== null : table.length > 0;
+  const canContinue = step === 0 ? name.trim().length > 0 : step === 1 ? (waiting ? waitingFor.trim().length > 0 : since !== null) : table.length > 0;
 
   const finish = () => {
-    completeOnboarding({ name, pronouns: pronouns ?? '', since: since ?? 'skip', table });
+    completeOnboarding({ name, pronouns: pronouns ?? '', since: waiting ? 'skip' : since ?? 'skip', table, waiting, waitingFor });
     onDone();
   };
   const next = () => (step < STEPS - 1 ? setStep(step + 1) : finish());
@@ -71,7 +75,7 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }) {
           </>
         )}
 
-        {step === 1 && (
+        {step === 1 && !waiting && (
           <>
             <Text style={type.label}>Since</Text>
             <Text style={styles.q}>How long has it been?</Text>
@@ -84,6 +88,50 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }) {
                 </Pressable>
               ))}
             </View>
+            <Pressable
+              onPress={() => {
+                setSince(null);
+                setWaiting(true);
+              }}
+              hitSlop={8}
+              style={({ pressed }) => [styles.aside, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={styles.asideText}>I’m the one waiting on someone</Text>
+              <Text style={[type.caption, { marginTop: 3 }]}>Some of the crew have sat on your side of a shut door.</Text>
+            </Pressable>
+          </>
+        )}
+
+        {step === 1 && waiting && (
+          <>
+            <Text style={type.label}>Waiting</Text>
+            <Text style={styles.q}>Who are you waiting on?</Text>
+            <Text style={[type.bodySoft, { marginTop: 6 }]}>So the table knows who you mean. Your words, not ours — and you can change it or turn this off in Settings.</Text>
+            <TextInput
+              value={waitingFor}
+              onChangeText={setWaitingFor}
+              maxLength={40}
+              autoCapitalize="none"
+              placeholder="my brother, my daughter, my oldest friend…"
+              placeholderTextColor={colors.inkFaint}
+              style={[styles.input, { fontSize: 17 }]}
+              returnKeyType="done"
+            />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
+              {WAITING_FOR_CHIPS.map((c) => (
+                <Chip key={c} text={c} selected={waitingFor.trim().toLowerCase() === c} onPress={() => setWaitingFor(c === 'someone else' ? '' : c)} />
+              ))}
+            </View>
+            <Pressable
+              onPress={() => {
+                setWaiting(false);
+                setWaitingFor('');
+              }}
+              hitSlop={8}
+              style={({ pressed }) => [styles.aside, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={styles.asideText}>Actually, I’m the one who’s been away</Text>
+            </Pressable>
           </>
         )}
 
@@ -153,5 +201,7 @@ const styles = StyleSheet.create({
   radioActive: { borderColor: colors.accent },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
   member: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radius.lg, padding: 14, borderWidth: 1.5, borderColor: colors.line },
+  aside: { marginTop: 20, paddingVertical: 6 },
+  asideText: { fontSize: 15, fontWeight: '700', color: colors.accentDeep, textDecorationLine: 'underline' },
   check: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.lineStrong, alignItems: 'center', justifyContent: 'center' },
 });

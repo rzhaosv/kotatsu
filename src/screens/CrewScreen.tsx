@@ -14,6 +14,7 @@ export default function CrewScreen({ navigation }: TabProps<'Crew'>) {
       <Header big title="Crew" />
       <Text style={[type.bodySoft, { marginTop: 2, marginBottom: 16 }]}>
         Six flatmates. Fictional, written by the studio, voiced by an AI model. {isPro ? 'Everyone can sit down.' : `${FREE_TABLE} seats on the free plan.`}
+        {state.waiting ? ' Each of them has done some waiting of their own.' : ''}
       </Text>
       <View style={{ gap: 14 }}>
         {CREW.map((c) => {
@@ -32,6 +33,12 @@ export default function CrewScreen({ navigation }: TabProps<'Crew'>) {
               </View>
               <Text style={[type.bodySoft, { marginTop: 10 }]}>{c.role}</Text>
               <Text style={[type.body, { marginTop: 10, fontSize: 15, lineHeight: 22 }]}>{c.backstory}</Text>
+              {state.waiting ? (
+                <View style={[styles.waiting, { borderColor: `${c.color}55`, backgroundColor: `${c.color}12` }]}>
+                  <Text style={[type.caption, { color: c.color, marginBottom: 4 }]}>THEIR OWN WAITING</Text>
+                  <Text style={styles.waitingText}>{c.waitingNote}</Text>
+                </View>
+              ) : null}
               <View style={{ marginTop: 12, gap: 6 }}>
                 {c.samples.slice(0, 3).map((s) => (
                   <View key={s} style={[styles.sample, { borderLeftColor: c.color }]}>
@@ -69,6 +76,8 @@ export default function CrewScreen({ navigation }: TabProps<'Crew'>) {
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: radius.xl, padding: 18, borderWidth: 1.5 },
   sample: { borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 2 },
+  waiting: { marginTop: 12, borderRadius: radius.md, borderWidth: 1, padding: 12 },
+  waitingText: { fontSize: 14, lineHeight: 21, color: colors.ink },
   sampleText: { fontSize: 14, lineHeight: 20, color: colors.inkSoft, fontStyle: 'italic' },
   toggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.lineStrong },
 });

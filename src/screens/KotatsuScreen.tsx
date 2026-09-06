@@ -10,21 +10,22 @@ import { TabProps } from '../navigation';
 import { demo } from '../dev/demo';
 
 export default function KotatsuScreen({ navigation }: TabProps<'Kotatsu'>) {
-  const { state, isPro, table, thread, typing, busy, notice, send, saveLine } = useApp();
-  const t = thread('group');
-  const fired = useRef(false);
+  const { state, isPro, table, thread, typing, busy, notice, send, saveLine, groupKey } = useApp();
+  const t = thread(groupKey);
+  const waiting = groupKey === 'waiting';
+  const fired = useRef<Partial<Record<string, boolean>>>({});
 
-  // First open after onboarding: the crew speaks first.
+  // First open of either thread: the crew speaks first, waiting mode included.
   useEffect(() => {
-    if (fired.current || demo) return;
-    if (state.onboarded && !state.greeted && t.messages.length === 0) {
-      fired.current = true;
-      send('group', null).then((r) => r === 'limit' && navigation.navigate('Paywall', { reason: 'limit' }));
+    if (fired.current[groupKey] || demo) return;
+    if (state.onboarded && t.messages.length === 0) {
+      fired.current[groupKey] = true;
+      send(groupKey, null).then((r) => r === 'limit' && navigation.navigate('Paywall', { reason: 'limit' }));
     }
-  }, [state.onboarded, state.greeted, t.messages.length, send, navigation]);
+  }, [state.onboarded, groupKey, t.messages.length, send, navigation]);
 
   const onSend = async (text: string) => {
-    const r = await send('group', text);
+    const r = await send(groupKey, text);
     if (r === 'limit') navigation.navigate('Paywall', { reason: 'limit' });
   };
 
@@ -42,7 +43,13 @@ export default function KotatsuScreen({ navigation }: TabProps<'Kotatsu'>) {
         <View style={{ flex: 1 }}>
           <Text style={type.h2}>the kotatsu</Text>
           <Text style={type.caption} numberOfLines={1}>
-            {table.length === 6 ? 'all six at the table' : `at the table: ${table.map((id) => crew(id).name.toLowerCase()).join(', ')}`}
+            {waiting
+              ? state.waitingFor
+                ? `waiting on ${state.waitingFor}`
+                : 'the table, with you waiting'
+              : table.length === 6
+              ? 'all six at the table'
+              : `at the table: ${table.map((id) => crew(id).name.toLowerCase()).join(', ')}`}
           </Text>
         </View>
         <Pressable onPress={() => navigation.navigate('Crew')} style={styles.avatars} hitSlop={8}>
@@ -53,9 +60,9 @@ export default function KotatsuScreen({ navigation }: TabProps<'Kotatsu'>) {
       </View>
       <ChatView
         messages={t.messages}
-        typing={typing.group}
-        busy={busy.group}
-        notice={notice.group}
+        typing={typing[groupKey]}
+        busy={busy[groupKey]}
+        notice={notice[groupKey]}
         onSend={onSend}
         onSave={saveLine}
         footerLeft={pill}

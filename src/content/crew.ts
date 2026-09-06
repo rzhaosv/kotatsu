@@ -12,13 +12,34 @@ export type CrewMember = {
   voice: string[];
   samples: string[];
   never: string[];
+  /** Lines they open with when nobody has spoken in a while. */
+  unprompted?: string[];
+  /** How they tease, kept in the sheet so the model keeps it affectionate. */
+  teases?: string[];
   greet_after_absence?: string;
   on_disappear?: string;
   on_crisis?: string;
+  /** Long-form direction for waiting mode, used server-side. */
+  waiting?: string;
   fallback?: string;
+  /** One sentence about their own turn at waiting on someone. Shown on the Crew screen in waiting mode. */
+  waitingNote: string;
 };
 
-export const CREW: CrewMember[] = raw as CrewMember[];
+/**
+ * One line each about the waiting they did themselves, for the people on the outside of a closed door.
+ * Drawn from the backstories; deliberately small, no promises about anyone coming back.
+ */
+const WAITING_NOTES: Record<CrewId, string> = {
+  haruka: 'She left a plate outside her younger brother’s door for three years and never once asked when he was going to fix it.',
+  rin: 'She was the kid frozen out of every group chat, so her rule is that a message with no question mark in it can’t be failed.',
+  kaito: 'He spent a year on a couch answering nobody, and what got through was a friend who turned up every Sunday with takeout and asked nothing.',
+  yui: 'She couldn’t say it to her father out loud for six years, so she wrote instead — a letter asks nothing of the person who opens it.',
+  daichi: 'His brother-in-law stood outside with two coffees every morning until he came to the corner, and never once tried the door.',
+  sora: 'He was the one behind the door for two years, and the only messages he could open were the small ones that wanted nothing back.',
+};
+
+export const CREW: CrewMember[] = (raw as Omit<CrewMember, 'waitingNote'>[]).map((c) => ({ ...c, waitingNote: WAITING_NOTES[c.id] }));
 
 /** First sentence of the role, for headers and list rows. */
 export function tagline(c: CrewMember): string {

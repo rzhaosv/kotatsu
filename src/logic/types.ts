@@ -27,6 +27,9 @@ export type Keepsake = { id: string; who: CrewId; text: string; at: string };
 
 export type Thread = { messages: Message[] };
 
+/** Chips offered for "who are you waiting on"; the field also takes free text. */
+export const WAITING_FOR_CHIPS: string[] = ['my brother', 'my sister', 'my son', 'my daughter', 'my partner', 'my friend', 'someone else'];
+
 export type AppState = {
   onboarded: boolean;
   device: string;
@@ -35,11 +38,19 @@ export type AppState = {
   since: Since;
   /** Whether the first-ever greeting has been requested (uses SINCE_DAYS). */
   greeted: boolean;
+  /**
+   * Waiting mode: the user isn't the one who went quiet, they're the one waiting on someone who did.
+   * Always chosen explicitly (onboarding or Settings), never inferred from anything they type.
+   */
+  waiting: boolean;
+  /** Who they're waiting on, in their own words ("my brother", "my daughter"). Kept when waiting mode is switched off. */
+  waitingFor: string;
   /** Crew ids currently "at the table". Free tier: max 3. */
   table: CrewId[];
   /** The one DM the free tier can open. */
   freeDm: CrewId;
-  group: Thread;
+  /** Two group conversations that never bleed into each other; both share `memory`. */
+  threads: { group: Thread; waiting: Thread };
   dms: Partial<Record<CrewId, Thread>>;
   memory: string;
   keepsakes: Keepsake[];
@@ -61,9 +72,11 @@ export const DEFAULT_STATE: AppState = {
   pronouns: '',
   since: 'skip',
   greeted: false,
+  waiting: false,
+  waitingFor: '',
   table: [],
   freeDm: 'haruka',
-  group: { messages: [] },
+  threads: { group: { messages: [] }, waiting: { messages: [] } },
   dms: {},
   memory: '',
   keepsakes: [],

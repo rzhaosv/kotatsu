@@ -4,13 +4,17 @@ import { demo } from '../dev/demo';
 
 export const API_URL = 'https://tryforma.app/api/kotatsu';
 
+/** 'waiting' takes the same shape as 'group'; only the crew's footing changes. */
+export type ApiMode = 'group' | 'dm' | 'waiting';
+
 export type ApiRequest = {
   device: string;
-  mode: 'group' | 'dm';
+  mode: ApiMode;
   speaker?: CrewId;
   messages: { role: 'user' | 'crew'; id?: CrewId; text: string }[];
   memory: string;
-  user: { name: string; pronouns?: string };
+  /** `waitingFor` is only sent in waiting mode; the backend ignores fields it doesn't know. */
+  user: { name: string; pronouns?: string; waitingFor?: string };
   daysAway: number;
   hour: number;
   pro: boolean;

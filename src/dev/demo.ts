@@ -14,8 +14,8 @@ import { RootStackParamList, TabParamList } from '../navigation';
 
 const STORAGE_KEY = 'kotatsu.state.v1';
 
-export type DemoName = 'chat' | 'rooms' | 'crew' | 'keepsakes' | 'paywall' | 'onboard';
-const VALID: DemoName[] = ['chat', 'rooms', 'crew', 'keepsakes', 'paywall', 'onboard'];
+export type DemoName = 'chat' | 'rooms' | 'crew' | 'keepsakes' | 'paywall' | 'onboard' | 'waiting' | 'onboard-waiting';
+const VALID: DemoName[] = ['chat', 'rooms', 'crew', 'keepsakes', 'paywall', 'onboard', 'waiting', 'onboard-waiting'];
 
 export type Demo = {
   name: DemoName;
@@ -23,6 +23,8 @@ export type Demo = {
   tab: keyof TabParamList;
   pro: boolean;
   snap: boolean;
+  /** Onboarding step to open on, for the onboarding demos. */
+  onboardStep?: number;
 };
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -47,6 +49,22 @@ function groupThread(now: number, pro: boolean): Message[] {
   ];
 }
 
+/** Waiting mode: a sister on the outside of her brother's door, and the crew answering from their own. */
+function waitingThread(now: number): Message[] {
+  const t = (m: number) => now - m * MIN;
+  return [
+    msg('crew', 'So you’re on the outside of a shut door. I did three years of that. Sit down — I’m not going to hand you a plan.', t(44), 'haruka'),
+    msg('user', 'he hasn’t come out of his room in two years. i’ve run out of things to say to him', t(41)),
+    msg('crew', 'Then stop saying. I left a plate outside my brother’s door most nights. Rice, whatever was on the stove. Knock once, “it’s here, no reply needed”, walk away. Cold food is cheap. It went on for three years.', t(40), 'haruka'),
+    msg('crew', 'from the other side: opening a message costs something in there. two years for me, nineteen to twenty-one. the door being shut was never about the person knocking.', t(38), 'sora'),
+    msg('crew', 'the ones i could open were small. “saw this, thought of you.” nothing to answer. the long ones sat unread for months and made the whole thing heavier.', t(37), 'sora'),
+    msg('user', 'my mum wants to take the door off the hinges', t(21)),
+    msg('crew', 'No. Nobody touched my door. My brother-in-law stood outside with two coffees every morning and said he’d be back tomorrow, and then he was back tomorrow. You can be at the corner. You can’t walk him to it.', t(20), 'daichi'),
+    msg('crew', 'It might be a year. You’re allowed to eat and sleep while it’s a year.', t(19), 'daichi'),
+    msg('crew', 'One thing tonight, then bed. A photo of something stupid, no question mark, nothing for him to answer. That’s the whole errand.', t(3), 'haruka'),
+  ];
+}
+
 function dmThread(now: number): Message[] {
   const t = (m: number) => now - m * MIN;
   return [
@@ -60,23 +78,29 @@ function dmThread(now: number): Message[] {
 const MEMORY =
   'Sam has a cat whose name they still haven’t told Rin. Works late shifts, was away nine days in August. Likes rain and old JRPGs. Replied to the scary work email this week. Drinks tea, not coffee.';
 
+const WAITING_MEMORY =
+  'Mika is waiting on her younger brother, who has been in his room about two years. She leaves food; their mother wants to force the door. Mika works early shifts and has stopped seeing her own friends. Haruka told her about the plate. Sora told her which messages get opened.';
+
 function buildState(name: DemoName, now: number, pro: boolean): AppState | null {
-  if (name === 'onboard') return null;
+  if (name === 'onboard' || name === 'onboard-waiting') return null;
   const t = (d: number) => now - d * 24 * 60 * MIN;
   const table: CrewId[] = pro ? ALL_CREW : ['haruka', 'rin', 'sora'];
+  const waiting = name === 'waiting';
   return {
     ...DEFAULT_STATE,
     onboarded: true,
     device: 'demo-device',
-    name: 'Sam',
-    pronouns: 'they/them',
+    name: waiting ? 'Mika' : 'Sam',
+    pronouns: waiting ? 'she/her' : 'they/them',
     since: 'days',
     greeted: true,
+    waiting,
+    waitingFor: waiting ? 'my brother' : '',
     table,
     freeDm: 'sora',
-    group: { messages: groupThread(now, pro) },
+    threads: { group: { messages: groupThread(now, pro) }, waiting: { messages: waiting ? waitingThread(now) : [] } },
     dms: { sora: { messages: dmThread(now) } },
-    memory: MEMORY,
+    memory: waiting ? WAITING_MEMORY : MEMORY,
     keepsakes: [
       { id: 'k1', who: 'haruka', text: 'Nine days. Your stool’s still here. Did you eat?', at: iso(t(0)) },
       { id: 'k2', who: 'yui', text: 'I left your chapter bookmarked. The one where the healer finally lets someone carry the bag.', at: iso(t(2)) },
@@ -106,12 +130,14 @@ function read(): Demo | null {
   }
   const tab: keyof TabParamList =
     name === 'rooms' ? 'Rooms' : name === 'crew' ? 'Crew' : name === 'keepsakes' ? 'Keepsakes' : 'Kotatsu';
+  const onboarding = name === 'onboard' || name === 'onboard-waiting';
   return {
     name,
-    screen: name === 'paywall' ? 'Paywall' : name === 'onboard' ? null : 'Tabs',
+    screen: name === 'paywall' ? 'Paywall' : onboarding ? null : 'Tabs',
     tab,
     pro,
     snap: params.get('snap') === '1',
+    onboardStep: name === 'onboard-waiting' ? 1 : undefined,
   };
 }
 

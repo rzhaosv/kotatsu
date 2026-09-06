@@ -9,7 +9,7 @@ import { TabProps } from '../navigation';
 import { SITE } from './PaywallScreen';
 import { SUPPORT_EMAIL } from '../components/ChatView';
 import { CREW } from '../content/crew';
-import { Pronouns, FREE_TABLE } from '../logic/types';
+import { Pronouns, FREE_TABLE, WAITING_FOR_CHIPS } from '../logic/types';
 
 const PRONOUNS: [Pronouns, string][] = [
   ['she/her', 'she/her'],
@@ -20,13 +20,25 @@ const PRONOUNS: [Pronouns, string][] = [
 const HOURS = [7, 8, 9, 12, 18, 20, 21, 22, 23, 0, 3];
 
 export default function SettingsScreen({ navigation }: TabProps<'Settings'>) {
-  const { state, isPro, setPro, update, toggleTable, setCheckins, resetAll } = useApp();
+  const { state, isPro, setPro, update, toggleTable, setCheckins, resetAll, setWaiting } = useApp();
   const [nameOpen, setNameOpen] = useState(false);
   const [name, setName] = useState('');
   const [pronouns, setPronouns] = useState<Pronouns>('');
   const [tableOpen, setTableOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [hourOpen, setHourOpen] = useState(false);
+  const [waitingOpen, setWaitingOpen] = useState(false);
+  const [waitingFor, setWaitingFor] = useState('');
+
+  const openWaiting = () => {
+    setWaitingFor(state.waitingFor);
+    setWaitingOpen(true);
+  };
+
+  const onWaitingSwitch = (v: boolean) => {
+    if (v && !state.waitingFor.trim()) return openWaiting();
+    setWaiting(v);
+  };
 
   const onDelete = () =>
     Alert.alert('Delete all data?', 'Chats, saved lines, what the crew remembers and your name are removed from this phone. Nothing is kept on a server to recover. This cannot be undone.', [
@@ -68,6 +80,18 @@ export default function SettingsScreen({ navigation }: TabProps<'Settings'>) {
         />
         <Row label="Pronouns" value={state.pronouns || 'not set'} onPress={() => { setName(state.name); setPronouns(state.pronouns); setNameOpen(true); }} />
         <Row label="Who’s at the table" value={`${(isPro ? state.table : state.table.slice(0, FREE_TABLE)).length} of 6`} onPress={() => setTableOpen(true)} last />
+      </Group>
+
+      <SectionCaption>WAITING</SectionCaption>
+      <Group>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 15, gap: 10, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+          <View style={{ flex: 1 }}>
+            <Text style={[type.body, { fontWeight: '600' }]}>I’m waiting on someone</Text>
+            <Text style={type.caption}>The table talks to you as the one outside the door. Both conversations are kept; nothing is erased either way.</Text>
+          </View>
+          <Switch value={state.waiting} onValueChange={onWaitingSwitch} trackColor={{ true: colors.accent, false: colors.lineStrong }} thumbColor="#fff" {...switchProps} />
+        </View>
+        <Row label="Waiting on" value={state.waitingFor || 'not set'} onPress={openWaiting} last />
       </Group>
 
       <SectionCaption>CHECK-INS</SectionCaption>
@@ -170,6 +194,41 @@ export default function SettingsScreen({ navigation }: TabProps<'Settings'>) {
             })}
           </View>
           <PrimaryButton title="Done" onPress={() => setTableOpen(false)} style={{ marginTop: 14 }} />
+        </View>
+      </Modal>
+
+      <Modal visible={waitingOpen} transparent animationType="fade" onRequestClose={() => setWaitingOpen(false)}>
+        <Pressable style={sheetStyles.backdrop} onPress={() => setWaitingOpen(false)} />
+        <View style={sheetStyles.sheet}>
+          <Text style={type.h2}>Who you’re waiting on</Text>
+          <Text style={[type.sub, { marginTop: 4 }]}>Your words. Change it whenever it changes.</Text>
+          <TextInput
+            value={waitingFor}
+            onChangeText={setWaitingFor}
+            maxLength={40}
+            autoCapitalize="none"
+            placeholder="my brother, my daughter, my oldest friend…"
+            placeholderTextColor={colors.inkFaint}
+            style={sheetStyles.input}
+          />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+            {WAITING_FOR_CHIPS.map((c) => (
+              <Chip key={c} text={c} selected={waitingFor.trim().toLowerCase() === c} onPress={() => setWaitingFor(c === 'someone else' ? '' : c)} />
+            ))}
+          </View>
+          <PrimaryButton
+            title={state.waiting ? 'Save' : 'Turn waiting on'}
+            onPress={() => {
+              const v = waitingFor.trim();
+              if (v) setWaiting(true, v);
+              setWaitingOpen(false);
+            }}
+            disabled={!waitingFor.trim()}
+            style={{ marginTop: 16 }}
+          />
+          <Pressable onPress={() => setWaitingOpen(false)} style={{ alignItems: 'center', paddingVertical: 14 }}>
+            <Text style={type.sub}>Cancel</Text>
+          </Pressable>
         </View>
       </Modal>
 

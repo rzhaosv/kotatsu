@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { AppState as RNAppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, DEFAULT_STATE, CrewId, Message, Keepsake, Thread, FREE_TABLE, SINCE_DAYS, ALL_CREW, uid, uuid } from '../logic/types';
-import { chat, toWire, LimitError } from '../services/api';
+import { chat, toWire, LimitError, ApiMode } from '../services/api';
 import { configureBilling, getCustomerInfo, isPremium, addPremiumListener, getAppUserID } from '../services/billing';
 import { scheduleCheckins, cancelCheckins } from '../services/notifications';
 import { CREW, crew } from '../content/crew';
@@ -12,7 +12,7 @@ export const STORAGE_KEY = 'kotatsu.state.v1';
 const DEV_UNLOCK = process.env.EXPO_PUBLIC_DEV_UNLOCK === '1' || process.env.EXPO_PUBLIC_DEV_UNLOCK === 'true';
 const DAY = 86_400_000;
 
-export type ThreadKey = 'group' | `dm:${CrewId}`;
+export type ThreadKey = 'group' | 'waiting' | `dm:${CrewId}`;
 export type SendResult = 'ok' | 'limit' | 'error';
 
 type Ctx = {
@@ -23,7 +23,7 @@ type Ctx = {
   /** Crew ids the current tier actually seats (free: first three of the table). */
   table: CrewId[];
   update: (patch: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void;
-  completeOnboarding: (setup: { name: string; pronouns: AppState['pronouns']; since: AppState['since']; table: CrewId[] }) => void;
+  completeOnboarding: (setup: { name: string; pronouns: AppState['pronouns']; since: AppState['since']; table: CrewId[]; waiting?: boolean; waitingFor?: string }) => void;
   /** Adds or removes a member from the table. Returns false when the free limit blocks it. */
   toggleTable: (id: CrewId) => boolean;
   canDm: (id: CrewId) => boolean;
@@ -36,6 +36,10 @@ type Ctx = {
   saveLine: (m: Message) => void;
   removeKeepsake: (id: string) => void;
   setMemory: (memory: string) => void;
+  /** Turns waiting mode on or off, and sets who they're waiting on. Never touches either thread or the memory. */
+  setWaiting: (on: boolean, waitingFor?: string) => void;
+  /** The group thread the Kotatsu tab is showing right now. */
+  groupKey: ThreadKey;
   setCheckins: (enabled: boolean, hour?: number) => Promise<boolean>;
   resetAll: () => Promise<void>;
 };
@@ -43,17 +47,18 @@ type Ctx = {
 const AppCtx = createContext<Ctx | null>(null);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, snap ? 0 : ms));
-const threadOf = (s: AppState, key: ThreadKey): Thread => (key === 'group' ? s.group : s.dms[key.slice(3) as CrewId] ?? { messages: [] });
+const threadOf = (s: AppState, key: ThreadKey): Thread =>
+  key === 'group' || key === 'waiting' ? s.threads[key] : s.dms[key.slice(3) as CrewId] ?? { messages: [] };
 
 function withThread(s: AppState, key: ThreadKey, fn: (t: Thread) => Thread): AppState {
-  if (key === 'group') return { ...s, group: fn(s.group) };
+  if (key === 'group' || key === 'waiting') return { ...s, threads: { ...s.threads, [key]: fn(s.threads[key]) } };
   const id = key.slice(3) as CrewId;
   return { ...s, dms: { ...s.dms, [id]: fn(s.dms[id] ?? { messages: [] }) } };
 }
 
 /** Offline canned reply for the web demo so the chat stays interactive without the backend. */
 function demoReply(key: ThreadKey, table: CrewId[]): { id: CrewId; text: string }[] {
-  const who = key === 'group' ? table[Math.floor(Math.random() * table.length)] ?? 'haruka' : (key.slice(3) as CrewId);
+  const who = key === 'group' || key === 'waiting' ? table[Math.floor(Math.random() * table.length)] ?? 'haruka' : (key.slice(3) as CrewId);
   const c = crew(who);
   return [{ id: c.id, text: c.samples[Math.floor(Math.random() * c.samples.length)] }];
 }
@@ -81,8 +86,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) {
-          const parsed = JSON.parse(raw) as Partial<AppState>;
+          const parsed = JSON.parse(raw) as Partial<AppState> & { group?: Thread };
           s = { ...DEFAULT_STATE, ...parsed, checkins: { ...DEFAULT_STATE.checkins, ...(parsed.checkins ?? {}) } };
+          // 1.0 kept a single `group` thread; 1.1 keeps group and waiting side by side.
+          s.threads = {
+            group: parsed.threads?.group ?? parsed.group ?? { messages: [] },
+            waiting: parsed.threads?.waiting ?? { messages: [] },
+          };
+          delete (s as { group?: Thread }).group;
         }
       } catch {
         /* start fresh */
@@ -138,12 +149,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const completeOnboarding = useCallback<Ctx['completeOnboarding']>((setup) => {
     const tbl = setup.table.length ? setup.table : ALL_CREW.slice(0, FREE_TABLE);
-    daysAwayRef.current = SINCE_DAYS[setup.since];
+    // A waiting user hasn't been away; nobody should greet them as if they had.
+    daysAwayRef.current = setup.waiting ? 0 : SINCE_DAYS[setup.since];
     setState((prev) => ({
       ...prev,
       name: setup.name.trim() || 'you',
       pronouns: setup.pronouns,
       since: setup.since,
+      waiting: !!setup.waiting,
+      waitingFor: (setup.waitingFor ?? '').trim(),
       table: tbl,
       freeDm: tbl[0],
       onboarded: true,
@@ -173,12 +187,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const send = useCallback<Ctx['send']>(async (key, text) => {
     const s0 = stateRef.current;
     if (busyRef.current[key]) return 'error';
-    const mode = key === 'group' ? 'group' : 'dm';
-    const speaker = key === 'group' ? undefined : (key.slice(3) as CrewId);
+    const mode: ApiMode = key === 'group' || key === 'waiting' ? key : 'dm';
+    const speaker = key === 'group' || key === 'waiting' ? undefined : (key.slice(3) as CrewId);
     const now = new Date().toISOString();
     const userMsg: Message | null = text && text.trim() ? { id: uid(), role: 'user', text: text.trim(), at: now } : null;
-    const daysAway = daysAwayRef.current ?? 0;
-    daysAwayRef.current = 0;
+    // In waiting mode the person here didn't go anywhere, so there is no absence to name.
+    const daysAway = mode === 'waiting' ? 0 : daysAwayRef.current ?? 0;
+    if (mode !== 'waiting') daysAwayRef.current = 0;
     const seated = (proRef.current ? s0.table : s0.table.slice(0, FREE_TABLE)) as CrewId[];
 
     setNotice((n) => ({ ...n, [key]: null }));
@@ -202,7 +217,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           speaker,
           messages: toWire(threadOf(next, key).messages),
           memory: next.memory,
-          user: { name: next.name, pronouns: next.pronouns || undefined },
+          user: { name: next.name, pronouns: next.pronouns || undefined, waitingFor: mode === 'waiting' ? next.waitingFor || undefined : undefined },
           daysAway,
           hour: new Date().getHours(),
           pro: proRef.current,
@@ -259,6 +274,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const removeKeepsake = useCallback((id: string) => setState((prev) => ({ ...prev, keepsakes: prev.keepsakes.filter((k) => k.id !== id) })), []);
   const setMemory = useCallback((memory: string) => setState((prev) => ({ ...prev, memory: memory.slice(0, 1200) })), []);
 
+  // Switching modes keeps both threads and the shared memory exactly as they are.
+  const setWaiting = useCallback<Ctx['setWaiting']>((on, waitingFor) => {
+    setState((prev) => ({ ...prev, waiting: on, waitingFor: waitingFor !== undefined ? waitingFor.trim().slice(0, 40) : prev.waitingFor }));
+  }, []);
+
   const setCheckins = useCallback<Ctx['setCheckins']>(async (enabled, hour) => {
     const h = hour ?? stateRef.current.checkins.hour;
     if (enabled && !demo) {
@@ -300,6 +320,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         notice,
         send,
         saveLine,
+        setWaiting,
+        groupKey: state.waiting ? 'waiting' : 'group',
         removeKeepsake,
         setMemory,
         setCheckins,

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kotatsu",
     "slug": "kotatsu",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kotatsu",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.formaz.kotatsu",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "Kotatsu can send a short check-in from the crew at a time you choose. Nothing leaves your phone to schedule it.",
         "ITSAppUsesNonExemptEncryption": false
