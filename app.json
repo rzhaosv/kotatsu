@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "Kotatsu",
+    "slug": "kotatsu",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "kotatsu",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FBF6EE",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.formaz.kotatsu",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSUserNotificationsUsageDescription": "Kotatsu can send a short check-in from the crew at a time you choose. Nothing leaves your phone to schedule it.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.formaz.kotatsu",
+      "adaptiveIcon": {
+        "backgroundColor": "#1F1B16",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      }
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#FBF6EE"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#E0873A",
+          "defaultChannel": "checkins"
+        }
+      ]
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "owner": "raymondzhao3000"
+  }
+}
